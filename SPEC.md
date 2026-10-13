@@ -128,7 +128,7 @@ type SessionDetail = Session & {
     workoutExercises: (WorkoutExercise & { exercise: Exercise })[]
 }
 
-type Set = {
+type WorkoutSet = {
     id: number
     setNumber: number      // assigned by the server; never sent
     reps: number           // integer, 1 or more
@@ -147,7 +147,7 @@ type ApiError = { msg: string }
 | `GET /verify` | `User` |
 | `GET /sessions` | `SessionSummary[]` |
 | `GET /sessions/:id` | `SessionDetail` |
-| `GET /workoutExercises/:id/sets` | `Set[]` |
+| `GET /workoutExercises/:id/sets` | `WorkoutSet[]` |
 | Any create / update / delete | The affected record |
 | Any failure | `ApiError`, except a failure Express itself produces before reaching a route |
 
@@ -170,7 +170,7 @@ type ApiError = { msg: string }
 
 This is an **optimistic** check — it only looks for the cookie's presence, so it's for routing, not security. In particular it doesn't protect Server Actions: those are POSTs to whatever page they're used on, and Next.js's own docs warn against relying on Proxy to guard them. What actually protects every read and write is that `lib/api.ts` sends the cookie's token and the API verifies it. A request with no valid token gets nothing from the API, whichever path it arrived by.
 
-**When the API rejects it.** The API answers `401` for a missing, invalid or expired token. `lib/api.ts` treats any `401` as "signed out": it deletes the cookie and redirects to `/login`. Because the cookie and the token both last 30 days, the usual way a session ends is the cookie simply disappearing; the `401` path catches the rest.
+**When the API rejects it.** The API answers `401` for a missing, invalid or expired token. `lib/api.ts` treats any `401` as "signed out" and redirects to `/signout`, a Route Handler that deletes the cookie and redirects on to `/login`. The detour is needed because Next.js only allows deleting a cookie in a Server Action or Route Handler — not while a Server Component renders, which is where most API calls happen. Deleting it matters: if the stale cookie survived, `proxy.ts` would see it, bounce `/login` back to `/sessions`, and the user would loop. Because the cookie and the token both last 30 days, the usual way a session ends is the cookie simply disappearing; the `401` path catches the rest.
 
 **Signing out.** A Server Action deletes the cookie and redirects to `/login`.
 
@@ -180,16 +180,21 @@ This is an **optimistic** check — it only looks for the cookie's presence, so 
 
 ## Key Patterns
 
-**One way to reach the API.** `lib/api.ts` is the only file that calls `fetch` against `API_URL`. It starts with `import "server-only"`, so importing it into a Client Component is a build error rather than a token leak. It reads the cookie, adds the `Authorization` header, parses JSON, and turns failures into the outcomes below.
+**One way to reach the API.** `lib/api.ts` is the only file that calls `fetch` against `API_URL`. It starts with `import "server-only"`, so importing it into a Client Component is a build error rather than a token leak. It reads the cookie, adds the `Authorization` header, parses JSON, and turns failures into the outcomes below. Requests use `cache: "no-store"`, because every response belongs to one user and must never be served to another.
+
+`api<T>(path, { method, body, auth })` returns the parsed JSON typed as `T`. That type is a promise the caller makes, not something checked at runtime, which is why `lib/types.ts` has to match what the API actually returns. Login and register pass `auth: false`: no token is sent, and a `401` comes back as an error to show — "invalid username or password" — instead of being taken as a sign-out.
+
+`redirect()` and `notFound()` both work by throwing, so `lib/api.ts` calls them outside any `try` block, and callers must not wrap `api()` in a `try/catch` that swallows them. A caller that catches should check for `ApiError` and rethrow everything else.
 
 **Failures map to one outcome each.**
 
 <!-- prettier-ignore -->
 | API answer | What the user sees |
 |---|---|
-| `400` | The API's `msg`, shown inline next to the form that caused it |
-| `401` | Signed out and sent to `/login` |
-| `404` | Next.js `notFound()` — the page's 404 screen |
+| `400` | An `ApiError` carrying the API's `msg`, shown inline next to the form that caused it |
+| `401` | Sent to `/signout`, which deletes the cookie, then to `/login`. Except with `auth: false`, where it's an `ApiError` like a `400` |
+| `404` on a read (`GET`) | Next.js `notFound()` — the page's 404 screen, since the thing the page shows doesn't exist |
+| `404` on a write | An `ApiError` with the API's `msg`, shown inline — e.g. "exercise not found" from the exercise picker is a form error, not a missing page |
 | `500` or network failure | The nearest `error.tsx` boundary, with a retry button |
 
 **The API is the source of truth for validation.** Forms use native HTML constraints for instant feedback — `required`, `min="1"` and `step="1"` on reps, `min="0"` and `step="any"` on weight — but nothing is re-implemented in JavaScript. Whatever the API rejects comes back as a `400` with a `msg`, and `useActionState` puts that message under the form. A rule only has to be written once.
@@ -215,6 +220,13 @@ function readNumber(form: FormData, field: string): number | undefined {
 **Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Primary actions sit at the bottom of the screen within thumb reach, and tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
 
 **Destructive actions confirm.** Deleting a session, an exercise or a set opens a shadcn `AlertDialog` first. Deleting a session also says that its exercises and sets go with it, since the API cascades.
+
+**Cache Components is on, so session reads stream.** Next.js 16.4 enables `cacheComponents` by default. A page renders a static shell — layout, header frame, headings — that appears instantly, and anything that calls the API (which reads the `token` cookie) sits inside a `<Suspense>` boundary with a skeleton fallback and streams in. Reading cookies outside a boundary is a **build error**, not just slower. Two rules follow:
+
+- Never `await` the API at the top level of a layout. That holds the whole segment, `{children}` included, behind the request. Put the read in a small async component inside the layout's boundary instead, as the signed-in header does with the user's name.
+- In a page, keep the heading outside the boundary and the data inside it, so the page has a recognisable shape on a slow connection. Skeletons match the layout of what they stand in for.
+
+This is the spec's "bad signal mid-workout" premise paying off: on a slow connection you see the page immediately rather than a frozen screen. `next build` reports such routes as **◐ Partial Prerender**.
 
 **`params` is a promise.** Since Next.js 15, a page's `params` must be awaited — `const { id } = await params` — and so must `cookies()`.
 
@@ -242,6 +254,7 @@ app/
     workoutExercises.ts
     sets.ts
     exercises.ts
+  signout/route.ts           # deletes the cookie, then redirects to /login
 components/
   ui/                        # shadcn/ui components — generated, owned by this repo
 lib/
@@ -297,7 +310,13 @@ npm run dev    # http://localhost:3000
 
 ## Built So Far
 
-- This spec. No code yet.
+- Next.js app scaffolded, with shadcn/ui initialised
+- `lib/api.ts` — the server-only API client, and `lib/types.ts`
+- `/signout` — the Route Handler a `401` redirects to
+- `/login` — page, form and the `login` / `logout` Server Actions
+- `/` — redirects to `/sessions`
+- Signed-in layout — header with the user's name and *Log out*, streamed
+- `/sessions` — the list only, streamed behind a skeleton; no *Start session* yet
 
 ## Not Yet Built
 
