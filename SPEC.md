@@ -166,7 +166,7 @@ type ApiError = { msg: string }
 | `path` | `/` | Every page needs it |
 | `maxAge` | 30 days | Matches the token's own 30-day expiry |
 
-**Checking it.** `proxy.ts` (Next.js 16's replacement for `middleware.ts`) redirects to `/login` when a protected path is requested with no `token` cookie, and away from `/login` and `/register` when one exists. Its matcher excludes `_next/static`, `_next/image` and `favicon.ico`, or the redirect would block CSS and JS from loading on the login page.
+**Checking it.** `proxy.ts` (Next.js 16's replacement for `middleware.ts`) redirects to `/login` when a protected path is requested with no `token` cookie, and away from `/login` and `/register` when one exists. Every path is protected unless it's one of those two auth pages — protected by default, so a page added later can't be left open by forgetting to list it. `/signout` always passes through untouched, since it has to run whether or not a cookie is present. Its matcher excludes `_next/static`, `_next/image` and `favicon.ico`, or the redirect would block CSS and JS from loading on the login page.
 
 This is an **optimistic** check — it only looks for the cookie's presence, so it's for routing, not security. In particular it doesn't protect Server Actions: those are POSTs to whatever page they're used on, and Next.js's own docs warn against relying on Proxy to guard them. What actually protects every read and write is that `lib/api.ts` sends the cookie's token and the API verifies it. A request with no valid token gets nothing from the API, whichever path it arrived by.
 
@@ -317,6 +317,7 @@ npm run dev    # http://localhost:3000
 - `/` — redirects to `/sessions`
 - Signed-in layout — header with the user's name and *Log out*, streamed
 - `/sessions` — the list only, streamed behind a skeleton; no *Start session* yet
+- `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
 
 ## Not Yet Built
 
