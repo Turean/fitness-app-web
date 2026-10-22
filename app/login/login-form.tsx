@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState } from "react"
+import { useActionState, useId } from "react"
 
 import { login, type LoginState } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
@@ -12,14 +12,15 @@ export function LoginForm() {
         login,
         {},
     )
+    const id = useId()
 
     return (
         <form action={formAction} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor={`${id}-username`}>Username</Label>
                 <Input
                     key={state.username}
-                    id="username"
+                    id={`${id}-username`}
                     name="username"
                     autoComplete="username"
                     autoCapitalize="none"
@@ -32,9 +33,9 @@ export function LoginForm() {
             </div>
 
             <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor={`${id}-password`}>Password</Label>
                 <Input
-                    id="password"
+                    id={`${id}-password`}
                     name="password"
                     type="password"
                     autoComplete="current-password"

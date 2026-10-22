@@ -219,6 +219,8 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Primary actions sit at the bottom of the screen within thumb reach, and tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
 
+**Form field ids come from `useId()`.** With Cache Components, navigating away from a page keeps it mounted but hidden, so it keeps its state if you come back. After going from `/login` to `/register`, both forms are in the document at once. Hard-coded ids like `id="username"` would then appear twice, and a label's `htmlFor` targets the first match in the document, which can be the hidden form's input. Each form calls `useId()` and prefixes its ids with it, so they never collide.
+
 **Destructive actions confirm.** Deleting a session, an exercise or a set opens a shadcn `AlertDialog` first. Deleting a session also says that its exercises and sets go with it, since the API cascades.
 
 **Cache Components is on, so session reads stream.** Next.js 16.4 enables `cacheComponents` by default. A page renders a static shell — layout, header frame, headings — that appears instantly, and anything that calls the API (which reads the `token` cookie) sits inside a `<Suspense>` boundary with a skeleton fallback and streams in. Reading cookies outside a boundary is a **build error**, not just slower. Two rules follow:
@@ -314,6 +316,7 @@ npm run dev    # http://localhost:3000
 - `lib/api.ts` — the server-only API client, and `lib/types.ts`
 - `/signout` — the Route Handler a `401` redirects to
 - `/login` — page, form and the `login` / `logout` Server Actions
+- `/register` — page, form and the `register` Server Action; links between the two auth pages
 - `/` — redirects to `/sessions`
 - Signed-in layout — header with the user's name and *Log out*, streamed
 - `/sessions` — the list only, streamed behind a skeleton; no *Start session* yet

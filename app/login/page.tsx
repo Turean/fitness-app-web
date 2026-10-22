@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 
 import {
     Card,
     CardContent,
     CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
@@ -25,6 +27,12 @@ export default function LoginPage() {
                 <CardContent>
                     <LoginForm />
                 </CardContent>
+                <CardFooter className="justify-center text-sm text-muted-foreground">
+                    New here?&nbsp;
+                    <Link href="/register" className="font-medium text-foreground underline-offset-4 hover:underline">
+                        Create an account
+                    </Link>
+                </CardFooter>
             </Card>
         </main>
     )
