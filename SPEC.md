@@ -289,7 +289,6 @@ The API runs on `8800` and this app on Next.js's default `3000`, so both can run
 Things in the API that this app works around or that limit it. None block building the app.
 
 - **No token revocation.** Logging out deletes the cookie, but the token stays valid until its 30-day expiry.
-- **Duplicate email reads as duplicate username.** Registering with an email that's already in use returns "username already taken". The register form shows the API's message as-is, so the user may be told the wrong field is the problem.
 - **No set counts on the session list.** `GET /sessions` includes an exercise count but not a set count, which would need a second query on the API side.
 - **No account editing.** There's no API for changing name, email, username or password, so there's no settings page.
 
