@@ -3,8 +3,7 @@ import { Suspense } from "react"
 import { logout } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { api } from "@/lib/api"
-import type { User } from "@/lib/types"
+import { getCurrentUser } from "@/lib/user"
 
 export default function SignedInLayout({
     children,
@@ -29,6 +28,6 @@ export default function SignedInLayout({
 }
 
 async function UserName() {
-    const user = await api<User>("/verify")
+    const user = await getCurrentUser()
     return <span className="font-medium">{user.name}</span>
 }

@@ -49,7 +49,7 @@ export async function login(
     }
 
     await startSession(result.token)
-    redirect("/sessions")
+    redirect("/")
 }
 
 export async function register(
@@ -87,7 +87,7 @@ export async function register(
     }
 
     await startSession(result.token)
-    redirect("/sessions")
+    redirect("/")
 }
 
 export async function logout() {

@@ -17,7 +17,7 @@ Browser ──── cookie (httpOnly) ────▶ Next.js server ───�
 ```
 
 - **Reads** happen in Server Components, which call the API server-to-server and render HTML.
-- **Writes** happen in Server Actions, called from `<form action={...}>`. After a write, the action calls `revalidatePath` for the affected page, or `redirect`s to the next screen.
+- **Writes** happen in Server Actions, called from `<form action={...}>`. After a write, the action either `redirect`s to the next screen or calls `refresh()` from `next/cache` to re-render the current page. Not `revalidatePath`: that clears cached data, and nothing here is cached — every API call is `no-store`.
 - **The JWT lives in an httpOnly cookie** named `token`. Browser JavaScript can't read it, so an XSS bug can't steal it.
 - **No CORS.** Because every API call is server-to-server, the API's `cors` package stays unmounted, and `API_URL` is a server-only variable with no `NEXT_PUBLIC_` prefix.
 
@@ -29,7 +29,7 @@ No client-side data library (TanStack Query, SWR). Server Components fetch, Serv
 
 The screens map onto what actually happens in a gym:
 
-1. **Arrive** → `/sessions` → *Start session* → pick PUSH, PULL or LEGS → land on the new session.
+1. **Arrive** → the home page at `/`, which greets you by name → tap **Start a session** → `/sessions/new`, where you choose PUSH, PULL or LEGS and add the first exercise. A note can be added afterwards on the session page.
 2. **Pick an exercise** → *Add exercise* on the session → choose from your library → land straight on that exercise's logging screen.
 3. **Log a set** → enter reps and weight → *Add set*. The form stays on the page and **keeps the last weight and reps filled in**, because most sets repeat them. Repeat.
 4. **Next exercise** → back to the session → *Add exercise* → step 3 again.
@@ -42,10 +42,10 @@ The screens map onto what actually happens in a gym:
 <!-- prettier-ignore -->
 | Path | Auth | Purpose |
 |---|---|---|
-| `/` | — | Redirects to `/sessions` if signed in, `/login` if not. |
-| `/login` | No | Username + password. On success sets the cookie and redirects to `/sessions`. |
-| `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/sessions`. |
-| `/sessions` | Yes | All sessions, newest first: type, date, note, and how many exercises each has. *Start session* button. |
+| `/` | Yes | **The home page.** Below the app bar: *Welcome, {name}*, a full-width *Start a session* button that links to `/sessions/new`, then *Recent sessions* — newest first, each with its type, date (with weekday), exercise count and note. Signed-out visitors are sent to `/login` by `proxy.ts`. |
+| `/login` | No | Username + password. On success sets the cookie and redirects to `/`. |
+| `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/`. |
+| `/sessions/new` | Yes | **Planned, not built.** Choose the session type and create the first workout exercise. |
 | `/sessions/[id]` | Yes | One session: type, date, editable note, and the list of exercises done (name + muscle group, **no sets**). *Add exercise*, *Edit*, *Delete session*. |
 | `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen.** Exercise name, its sets in order, the add-set form, edit/delete per set, *Swap exercise*, *Remove from session*. |
 | `/exercises` | Yes | The exercise library: add, rename, change muscle group, delete. |
@@ -64,11 +64,11 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Page / action | API calls |
 |---|---|
 | Layout header | `GET /verify` |
-| `/sessions` | `GET /sessions` |
-| Start session | `POST /sessions` → redirect to `/sessions/[id]` |
+| `/` (home) | `GET /verify` for the welcome line and `GET /sessions` for the list. The `/verify` call is shared with the header — see *One user lookup per request* |
+| Start session, on `/sessions/new` (planned) | `POST /sessions` |
 | `/sessions/[id]` | `GET /sessions/:id` |
 | Edit session | `PATCH /sessions/:id` |
-| Delete session | `DELETE /sessions/:id` → redirect to `/sessions` |
+| Delete session | `DELETE /sessions/:id` → redirect to `/` |
 | Add exercise to session | `GET /exercises` for the picker, then `POST /sessions/:id/workoutExercises` → redirect to the logging screen |
 | Logging screen | `GET /sessions/:id` **and** `GET /workoutExercises/:weId/sets`, in parallel |
 | Add set | `POST /workoutExercises/:weId/sets` |
@@ -136,26 +136,31 @@ type WorkoutSet = {
     workoutExerciseId: number
 }
 
-type ApiError = { msg: string }
+type AuthResponse = {
+    safeUser: User
+    token: string
+}
 ```
+
+Error bodies are `{ msg: string }`. They aren't a type in `lib/types.ts`: `lib/api.ts` turns them into an `ApiError` **class**, which carries the HTTP `status` as well as the message, so callers can tell a `400` from a `404`.
 
 <!-- prettier-ignore -->
 | Endpoint | Returns |
 |---|---|
-| `POST /login` | `{ safeUser: User, token: string }` |
-| `POST /users` | `{ safeUser: User, token: string }` — the same as login |
+| `POST /login` | `AuthResponse` |
+| `POST /users` | `AuthResponse` — the same as login |
 | `GET /verify` | `User` |
 | `GET /sessions` | `SessionSummary[]` |
 | `GET /sessions/:id` | `SessionDetail` |
 | `GET /workoutExercises/:id/sets` | `WorkoutSet[]` |
 | Any create / update / delete | The affected record |
-| Any failure | `ApiError`, except a failure Express itself produces before reaching a route |
+| Any failure | `{ msg }`, thrown by `lib/api.ts` as an `ApiError` |
 
 ---
 
 ## Auth
 
-**Signing in.** The login and register Server Actions call `POST /login` or `POST /users`, which both return `{ safeUser, token }`, then set the cookie:
+**Signing in.** The login and register Server Actions call `POST /login` or `POST /users`, which both return `{ safeUser, token }`, then set the cookie through `startSession`, a helper in `app/actions/auth.ts` that is deliberately **not exported**. In a `"use server"` file every export can be called from the browser, so exporting it would let anyone set an arbitrary token cookie. The cookie:
 
 <!-- prettier-ignore -->
 | Attribute | Value | Why |
@@ -166,11 +171,11 @@ type ApiError = { msg: string }
 | `path` | `/` | Every page needs it |
 | `maxAge` | 30 days | Matches the token's own 30-day expiry |
 
-**Checking it.** `proxy.ts` (Next.js 16's replacement for `middleware.ts`) redirects to `/login` when a protected path is requested with no `token` cookie, and away from `/login` and `/register` when one exists. Every path is protected unless it's one of those two auth pages — protected by default, so a page added later can't be left open by forgetting to list it. `/signout` always passes through untouched, since it has to run whether or not a cookie is present. Its matcher excludes `_next/static`, `_next/image` and `favicon.ico`, or the redirect would block CSS and JS from loading on the login page.
+**Checking it.** `proxy.ts` (Next.js 16's replacement for `middleware.ts`) redirects to `/login` when a protected path is requested with no `token` cookie, and away from `/login` and `/register` to the home page `/` when one exists. Every path is protected unless it's one of those two auth pages — protected by default, so a page added later can't be left open by forgetting to list it. `/signout` always passes through untouched, since it has to run whether or not a cookie is present. Its matcher excludes `_next/static`, `_next/image` and `favicon.ico`, or the redirect would block CSS and JS from loading on the login page.
 
 This is an **optimistic** check — it only looks for the cookie's presence, so it's for routing, not security. In particular it doesn't protect Server Actions: those are POSTs to whatever page they're used on, and Next.js's own docs warn against relying on Proxy to guard them. What actually protects every read and write is that `lib/api.ts` sends the cookie's token and the API verifies it. A request with no valid token gets nothing from the API, whichever path it arrived by.
 
-**When the API rejects it.** The API answers `401` for a missing, invalid or expired token. `lib/api.ts` treats any `401` as "signed out" and redirects to `/signout`, a Route Handler that deletes the cookie and redirects on to `/login`. The detour is needed because Next.js only allows deleting a cookie in a Server Action or Route Handler — not while a Server Component renders, which is where most API calls happen. Deleting it matters: if the stale cookie survived, `proxy.ts` would see it, bounce `/login` back to `/sessions`, and the user would loop. Because the cookie and the token both last 30 days, the usual way a session ends is the cookie simply disappearing; the `401` path catches the rest.
+**When the API rejects it.** The API answers `401` for a missing, invalid or expired token. `lib/api.ts` treats any `401` as "signed out" and redirects to `/signout`, a Route Handler that deletes the cookie and redirects on to `/login`. The detour is needed because Next.js only allows deleting a cookie in a Server Action or Route Handler — not while a Server Component renders, which is where most API calls happen. Deleting it matters: if the stale cookie survived, `proxy.ts` would see it, bounce `/login` back to `/`, and the user would loop. Because the cookie and the token both last 30 days, the usual way a session ends is the cookie simply disappearing; the `401` path catches the rest.
 
 **Signing out.** A Server Action deletes the cookie and redirects to `/login`.
 
@@ -195,7 +200,7 @@ This is an **optimistic** check — it only looks for the cookie's presence, so 
 | `401` | Sent to `/signout`, which deletes the cookie, then to `/login`. Except with `auth: false`, where it's an `ApiError` like a `400` |
 | `404` on a read (`GET`) | Next.js `notFound()` — the page's 404 screen, since the thing the page shows doesn't exist |
 | `404` on a write | An `ApiError` with the API's `msg`, shown inline — e.g. "exercise not found" from the exercise picker is a form error, not a missing page |
-| `500` or network failure | The nearest `error.tsx` boundary, with a retry button |
+| `500` or network failure | The nearest `error.tsx` boundary, with a retry button. **Not built yet** — until it is, the user gets Next.js's default error page, e.g. when the API isn't running |
 
 **The API is the source of truth for validation.** Forms use native HTML constraints for instant feedback — `required`, `min="1"` and `step="1"` on reps, `min="0"` and `step="any"` on weight — but nothing is re-implemented in JavaScript. Whatever the API rejects comes back as a `400` with a `msg`, and `useActionState` puts that message under the form. A rule only has to be written once.
 
@@ -215,18 +220,24 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Ids come from the API, never from string building.** A link is only ever built from an id the API returned. The API answers `404` to a non-numeric id, and a URL like `/sessions/undefined` — what a missing variable produces — would otherwise reach it.
 
-**Session types are a fixed choice in the UI.** The API stores any string and uppercases it, but the spec names three types. The start-session form offers exactly PUSH, PULL and LEGS as a select, so free text can never reach the API from this app.
+**Session types are a fixed choice.** The API stores any string and uppercases it, but the spec names three types. They're defined once in `lib/session-types.ts` — not in the actions file, because a `"use server"` file may only export async functions. The `/sessions/new` page will offer exactly those three, and the `createSession` action checks the submitted value against the same list, since a Server Action is a public endpoint that can be called without the form.
 
-**Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Primary actions sit at the bottom of the screen within thumb reach, and tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
+**Submit buttons guard against a double tap.** `disabled={pending}` only takes effect after React re-renders, and a second tap that lands before then starts a second session — measured at 54 ms apart. Forms whose action creates something also keep a `useRef` flag set by `onSubmit`: while it's set, further submits are cancelled with `preventDefault()`, and it clears once `pending` goes false.
+
+**Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
+
+**Navigation is a link, not a button.** *Start a session* is a `<Link>` styled with `buttonVariants`, not a `<Button>` with a click handler. It looks the same, but it's a real link: Next can prefetch the page behind it, and a long-press opens it in a new tab.
+
+**One user lookup per request.** The app bar and the home page's welcome both need the current user. `getCurrentUser()` in `lib/user.ts` wraps `GET /verify` in React's `cache()`, which shares one result across everything rendered for the same request, so the API is called once however many components ask.
 
 **Form field ids come from `useId()`.** With Cache Components, navigating away from a page keeps it mounted but hidden, so it keeps its state if you come back. After going from `/login` to `/register`, both forms are in the document at once. Hard-coded ids like `id="username"` would then appear twice, and a label's `htmlFor` targets the first match in the document, which can be the hidden form's input. Each form calls `useId()` and prefixes its ids with it, so they never collide.
 
 **Destructive actions confirm.** Deleting a session, an exercise or a set opens a shadcn `AlertDialog` first. Deleting a session also says that its exercises and sets go with it, since the API cascades.
 
-**Cache Components is on, so session reads stream.** Next.js 16.4 enables `cacheComponents` by default. A page renders a static shell — layout, header frame, headings — that appears instantly, and anything that calls the API (which reads the `token` cookie) sits inside a `<Suspense>` boundary with a skeleton fallback and streams in. Reading cookies outside a boundary is a **build error**, not just slower. Two rules follow:
+**Cache Components is on, so session reads stream.** `create-next-app` 16.4 turned on `cacheComponents` and `partialPrefetching` in `next.config.ts`, and the app is written for them. A page renders a static shell — layout, header frame, headings — that appears instantly, and anything that calls the API (which reads the `token` cookie) sits inside a `<Suspense>` boundary with a skeleton fallback and streams in. Reading cookies outside a boundary is a **build error**, not just slower. Two rules follow:
 
 - Never `await` the API at the top level of a layout. That holds the whole segment, `{children}` included, behind the request. Put the read in a small async component inside the layout's boundary instead, as the signed-in header does with the user's name.
-- In a page, keep the heading outside the boundary and the data inside it, so the page has a recognisable shape on a slow connection. Skeletons match the layout of what they stand in for.
+- In a page, keep static headings outside the boundary and the data inside it, so the page has a recognisable shape on a slow connection. A heading that itself needs data — the home page's *Welcome, {name}* — gets its own small boundary. Skeletons match the layout of what they stand in for.
 
 This is the spec's "bad signal mid-workout" premise paying off: on a slow connection you see the page immediately rather than a frozen screen. `next build` reports such routes as **◐ Partial Prerender**.
 
@@ -234,39 +245,48 @@ This is the spec's "bad signal mid-workout" premise paying off: on a slow connec
 
 ---
 
-## Project Structure (planned)
+## Project Structure
+
+Files marked *(planned)* don't exist yet.
 
 ```
 app/
-  layout.tsx                 # root: html, body, fonts, Toaster
-  page.tsx                   # redirects to /sessions or /login
-  login/page.tsx
-  register/page.tsx
+  layout.tsx                 # root: html, body, font, title template
+  login/
+    page.tsx
+    login-form.tsx           # Client Component: useActionState form
+  register/
+    page.tsx
+    register-form.tsx
   (signed-in)/               # route group: shares the header layout, adds nothing to the URL
     layout.tsx               # header with user name and Log out
+    page.tsx                 # the home page, served at /
     sessions/
-      page.tsx
+      new/page.tsx           # (planned)
       [id]/
-        page.tsx
-        exercises/[weId]/page.tsx
-    exercises/page.tsx
+        page.tsx             # (planned)
+        exercises/[weId]/page.tsx   # (planned)
+    exercises/page.tsx       # (planned)
   actions/                   # Server Actions, one file per resource
-    auth.ts
-    sessions.ts
-    workoutExercises.ts
-    sets.ts
-    exercises.ts
+    auth.ts                  # login, register, logout
+    sessions.ts              # createSession
+    workoutExercises.ts      # (planned)
+    sets.ts                  # (planned)
+    exercises.ts             # (planned)
   signout/route.ts           # deletes the cookie, then redirects to /login
 components/
   ui/                        # shadcn/ui components — generated, owned by this repo
 lib/
-  api.ts                     # server-only API client
+  api.ts                     # server-only API client and ApiError
   types.ts                   # response types above
-  format.ts                  # weight and date formatting
+  user.ts                    # getCurrentUser(), one GET /verify per request
+  session-types.ts           # PUSH, PULL, LEGS
+  utils.ts                   # cn(), generated by shadcn
+  format.ts                  # (planned) weight and date formatting
 proxy.ts                     # optimistic auth redirects
 ```
 
-shadcn/ui components expected: `button`, `input`, `label`, `card`, `select`, `dialog`, `alert-dialog`, `sonner` (toasts).
+shadcn/ui components installed: `button`, `card`, `input`, `label`, `skeleton`. Still to add as the pages need them: `select`, `alert-dialog` (destructive confirms) and `sonner` (toasts).
 
 ---
 
@@ -297,33 +317,41 @@ Things in the API that this app works around or that limit it. None block buildi
 ## Setup
 
 ```bash
-# 1. Start the API first — see ../api/README.md
+# 1. Start the API first, in its own terminal — see ../api/README.md
 cd ../api && npm run dev
 
-# 2. Then this app
+# 2. Then this app, in a second terminal
 cd ../web
 npm install
 cp .env.example .env.local
 npm run dev    # http://localhost:3000
 ```
 
+`npm run typecheck` runs `next typegen` before `tsc`. Next 16 generates route types such as `LayoutProps` into `.next/`, so a bare `tsc` fails on a fresh checkout.
+
 ---
 
 ## Built So Far
 
-- Next.js app scaffolded, with shadcn/ui initialised
+- Next.js 16.4.2 app scaffolded, with shadcn/ui initialised
 - `lib/api.ts` — the server-only API client, and `lib/types.ts`
 - `/signout` — the Route Handler a `401` redirects to
 - `/login` — page, form and the `login` / `logout` Server Actions
 - `/register` — page, form and the `register` Server Action; links between the two auth pages
-- `/` — redirects to `/sessions`
 - Signed-in layout — header with the user's name and *Log out*, streamed
-- `/sessions` — the list only, streamed behind a skeleton; no *Start session* yet
+- `/` — the home page: a welcome line with the user's name, a *Start a session* link to `/sessions/new`, and *Recent sessions*, each part streamed behind its own skeleton. `/sessions/new` itself isn't built yet, so the link currently leads to the 404 page
 - `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
+- `lib/user.ts` — `getCurrentUser()`, shared by the header and the welcome line
+- `createSession` action and `lib/session-types.ts` — written for `/sessions/new`, but not yet used by any page
 
 ## Not Yet Built
 
-- Everything above
+- `/sessions/new` — choose the session type and create the first workout exercise
+- `/sessions/[id]` — session detail, with the editable note
+- The logging screen — `/sessions/[id]/exercises/[weId]`
+- `/exercises` — the exercise library
+- `error.tsx` — a friendly error page with a retry button
+- `lib/format.ts` — weight formatting (`7.5`, **BW**)
 - Optimistic set logging with `useOptimistic`, so a set appears the instant it's tapped rather than after the round trip
 - Offline logging — gyms are often basements with no signal; sets would queue locally and sync later
 - Streak and attendance views, once the API supports them

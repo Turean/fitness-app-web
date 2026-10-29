@@ -11,7 +11,7 @@ export function proxy(request: NextRequest) {
     }
 
     if (AUTH_PAGES.includes(pathname)) {
-        return signedIn ? redirectTo("/sessions", request) : NextResponse.next()
+        return signedIn ? redirectTo("/", request) : NextResponse.next()
     }
 
     return signedIn ? NextResponse.next() : redirectTo("/login", request)
