@@ -42,9 +42,10 @@ The screens map onto what actually happens in a gym:
 <!-- prettier-ignore -->
 | Path | Auth | Purpose |
 |---|---|---|
-| `/` | Yes | **The home page.** Below the app bar: *Welcome, {name}*, a full-width *Start a session* button that links to `/sessions/new`, then *Recent sessions* — newest first, each with its type, date (with weekday), exercise count and note. Signed-out visitors are sent to `/login` by `proxy.ts`. |
+| `/` | Yes | **The home page.** Below the app bar: *Welcome, {name}*, a full-width *Start a session* button that links to `/sessions/new`, then *Recent sessions*: the **five** newest, each with its type, date (with weekday), exercise count and note, and a *Show all* link beside the heading. Signed-out visitors are sent to `/login` by `proxy.ts`. |
 | `/login` | No | Username + password. On success sets the cookie and redirects to `/`. |
 | `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/`. |
+| `/sessions` | Yes | Every session, newest first, in the same cards as the home page, with a *Home* back link. Reached from *Show all*. |
 | `/sessions/new` | Yes | **Planned, not built.** Choose the session type and create the first workout exercise. |
 | `/sessions/[id]` | Yes | One session: type, date, editable note, and the list of exercises done (name + muscle group, **no sets**). *Add exercise*, *Edit*, *Delete session*. |
 | `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen.** Exercise name, its sets in order, the add-set form, edit/delete per set, *Swap exercise*, *Remove from session*. |
@@ -64,7 +65,8 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Page / action | API calls |
 |---|---|
 | Layout header | `GET /verify` |
-| `/` (home) | `GET /verify` for the welcome line and `GET /sessions` for the list. The `/verify` call is shared with the header — see *One user lookup per request* |
+| `/sessions` | `GET /sessions` |
+| `/` (home) | `GET /verify` for the welcome line and `GET /sessions?limit=5` for the list, so only five sessions are ever fetched. The `/verify` call is shared with the header — see *One user lookup per request* |
 | Start session, on `/sessions/new` (planned) | `POST /sessions` |
 | `/sessions/[id]` | `GET /sessions/:id` |
 | Edit session | `PATCH /sessions/:id` |
@@ -226,6 +228,8 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
 
+**One session list, two pages.** `components/session-list.tsx` renders the cards for both the home page and `/sessions`. The home page passes `limit={5}`, which becomes `GET /sessions?limit=5` — the limit is applied by the API, not by slicing a full list in the browser. `/sessions` passes none. Sharing it means the two can't drift apart in how a session is shown.
+
 **Navigation is a link, not a button.** *Start a session* is a `<Link>` styled with `buttonVariants`, not a `<Button>` with a click handler. It looks the same, but it's a real link: Next can prefetch the page behind it, and a long-press opens it in a new tab.
 
 **One user lookup per request.** The app bar and the home page's welcome both need the current user. `getCurrentUser()` in `lib/user.ts` wraps `GET /verify` in React's `cache()`, which shares one result across everything rendered for the same request, so the API is called once however many components ask.
@@ -262,6 +266,7 @@ app/
     layout.tsx               # header with user name and Log out
     page.tsx                 # the home page, served at /
     sessions/
+      page.tsx               # every session
       new/page.tsx           # (planned)
       [id]/
         page.tsx             # (planned)
@@ -275,6 +280,7 @@ app/
     exercises.ts             # (planned)
   signout/route.ts           # deletes the cookie, then redirects to /login
 components/
+  session-list.tsx           # session cards, shared by / and /sessions
   ui/                        # shadcn/ui components — generated, owned by this repo
 lib/
   api.ts                     # server-only API client and ApiError
@@ -339,7 +345,8 @@ npm run dev    # http://localhost:3000
 - `/login` — page, form and the `login` / `logout` Server Actions
 - `/register` — page, form and the `register` Server Action; links between the two auth pages
 - Signed-in layout — header with the user's name and *Log out*, streamed
-- `/` — the home page: a welcome line with the user's name, a *Start a session* link to `/sessions/new`, and *Recent sessions*, each part streamed behind its own skeleton. `/sessions/new` itself isn't built yet, so the link currently leads to the 404 page
+- `/` — the home page: a welcome line with the user's name, a *Start a session* link to `/sessions/new`, and the five most recent sessions with a *Show all* link, each part streamed behind its own skeleton. `/sessions/new` itself isn't built yet, so the link currently leads to the 404 page
+- `/sessions` — every session, reached from *Show all*
 - `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
 - `lib/user.ts` — `getCurrentUser()`, shared by the header and the welcome line
 - `createSession` action and `lib/session-types.ts` — written for `/sessions/new`, but not yet used by any page
