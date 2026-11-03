@@ -47,7 +47,7 @@ The screens map onto what actually happens in a gym:
 | `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/`. |
 | `/sessions` | Yes | Every session, newest first, in the same cards as the home page, with a *Home* back link. Reached from *Show all*. |
 | `/sessions/new` | Yes | **Planned, not built.** Choose the session type and create the first workout exercise. |
-| `/sessions/[id]` | Yes | One session: type, date, editable note, and the list of exercises done (name + muscle group, **no sets**). *Add exercise*, *Edit*, *Delete session*. |
+| `/sessions/[id]` | Yes | **Built (view only).** One session in full: type, the date written out, the note, a count of exercises and sets, then every exercise with its muscle group and a table of its sets — set number, reps, weight. Reached by tapping any session card; *All sessions* goes back. Still to add: *Edit* note, *Delete session*, *Add exercise*. |
 | `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen.** Exercise name, its sets in order, the add-set form, edit/delete per set, *Swap exercise*, *Remove from session*. |
 | `/exercises` | Yes | The exercise library: add, rename, change muscle group, delete. |
 
@@ -72,7 +72,7 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Edit session | `PATCH /sessions/:id` |
 | Delete session | `DELETE /sessions/:id` → redirect to `/` |
 | Add exercise to session | `GET /exercises` for the picker, then `POST /sessions/:id/workoutExercises` → redirect to the logging screen |
-| Logging screen | `GET /sessions/:id` **and** `GET /workoutExercises/:weId/sets`, in parallel |
+| Logging screen | `GET /sessions/:id`, which now carries every exercise's sets |
 | Add set | `POST /workoutExercises/:weId/sets` |
 | Edit set | `PATCH /workoutExercises/:weId/sets/:setId` |
 | Delete set | `DELETE /workoutExercises/:weId/sets/:setId` |
@@ -84,7 +84,7 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Register | `POST /users` → set cookie |
 | Log out | none — deletes the cookie |
 
-**Why the logging screen makes two calls.** `GET /workoutExercises/:weId/sets` returns only the sets, not which exercise they belong to. The exercise name for the header comes from `GET /sessions/:id`, by finding `weId` in its `workoutExercises`. If `weId` isn't in that session, the page is a `404` — which also stops a URL from pairing a session with another session's workout exercise.
+**The logging screen reads its exercise out of the session.** `GET /sessions/:id` returns every exercise with its sets, so the logging screen finds `weId` among the session's `workoutExercises` instead of making a second call. If `weId` isn't in that session, the page is a `404` — which also stops a URL from pairing a session with another session's workout exercise.
 
 ---
 
@@ -127,7 +127,10 @@ type WorkoutExercise = {
 }
 
 type SessionDetail = Session & {
-    workoutExercises: (WorkoutExercise & { exercise: Exercise })[]
+    workoutExercises: (WorkoutExercise & {
+        exercise: Exercise
+        sets: WorkoutSet[]        // in setNumber order
+    })[]
 }
 
 type WorkoutSet = {
@@ -218,9 +221,13 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 `undefined` is then left out of the request body, and the API answers with its own "required" `400`.
 
-**Weights display the way people say them.** `7.5`, not `7.50`; `60`, not `60.0`. Bodyweight sets (`weight: 0`) show as **BW** rather than `0 kg`.
+**Weights display the way people say them.** `formatWeight` in `lib/format.ts` writes `7.5 kg`, not `7.50`; `60 kg`, not `60.0`; and float noise like `0.30000000000000004` as `0.3 kg`. Bodyweight sets (`weight: 0`) show as **BW** rather than `0 kg`. Dates go through the same file, so every page writes them the same way.
 
 **Ids come from the API, never from string building.** A link is only ever built from an id the API returned. The API answers `404` to a non-numeric id, and a URL like `/sessions/undefined` — what a missing variable produces — would otherwise reach it.
+
+**An id from the URL is checked before it reaches the API.** A page like `/sessions/[id]` puts its `id` into an API path, and `fetch` resolves `..` in a URL: an id of `..` — even run through `encodeURIComponent`, which leaves dots alone — turns `/sessions/..` into a request for the API's root instead of a session. So the page accepts only digits and calls `notFound()` for anything else, before any request is made.
+
+**A streamed 404 answers 200.** When `notFound()` runs inside a `<Suspense>` boundary, the page's shell — and its `200` status — has already been sent, so Next swaps in the 404 page and adds a `noindex` tag rather than changing the status. Users see the right page and search engines skip it; only the raw HTTP status is off.
 
 **Session types are a fixed choice.** The API stores any string and uppercases it, but the spec names three types. They're defined once in `lib/session-types.ts` — not in the actions file, because a `"use server"` file may only export async functions. The `/sessions/new` page will offer exactly those three, and the `createSession` action checks the submitted value against the same list, since a Server Action is a public endpoint that can be called without the form.
 
@@ -269,7 +276,7 @@ app/
       page.tsx               # every session
       new/page.tsx           # (planned)
       [id]/
-        page.tsx             # (planned)
+        page.tsx             # one session, every set
         exercises/[weId]/page.tsx   # (planned)
     exercises/page.tsx       # (planned)
   actions/                   # Server Actions, one file per resource
@@ -288,7 +295,7 @@ lib/
   user.ts                    # getCurrentUser(), one GET /verify per request
   session-types.ts           # PUSH, PULL, LEGS
   utils.ts                   # cn(), generated by shadcn
-  format.ts                  # (planned) weight and date formatting
+  format.ts                  # weight and date formatting
 proxy.ts                     # optimistic auth redirects
 ```
 
@@ -347,6 +354,8 @@ npm run dev    # http://localhost:3000
 - Signed-in layout — header with the user's name and *Log out*, streamed
 - `/` — the home page: a welcome line with the user's name, a *Start a session* link to `/sessions/new`, and the five most recent sessions with a *Show all* link, each part streamed behind its own skeleton. `/sessions/new` itself isn't built yet, so the link currently leads to the 404 page
 - `/sessions` — every session, reached from *Show all*
+- `/sessions/[id]` — one session in full, with every exercise and its sets; opened by tapping any session card
+- `lib/format.ts` — `formatWeight` (`7.5 kg`, **BW**) and the date formats
 - `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
 - `lib/user.ts` — `getCurrentUser()`, shared by the header and the welcome line
 - `createSession` action and `lib/session-types.ts` — written for `/sessions/new`, but not yet used by any page
@@ -354,11 +363,10 @@ npm run dev    # http://localhost:3000
 ## Not Yet Built
 
 - `/sessions/new` — choose the session type and create the first workout exercise
-- `/sessions/[id]` — session detail, with the editable note
+- Editing on `/sessions/[id]` — the note, deleting the session, adding an exercise
 - The logging screen — `/sessions/[id]/exercises/[weId]`
 - `/exercises` — the exercise library
 - `error.tsx` — a friendly error page with a retry button
-- `lib/format.ts` — weight formatting (`7.5`, **BW**)
 - Optimistic set logging with `useOptimistic`, so a set appears the instant it's tapped rather than after the round trip
 - Offline logging — gyms are often basements with no signal; sets would queue locally and sync later
 - Streak and attendance views, once the API supports them

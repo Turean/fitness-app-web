@@ -37,7 +37,10 @@ export type WorkoutExercise = {
 }
 
 export type SessionDetail = Session & {
-    workoutExercises: (WorkoutExercise & { exercise: Exercise })[]
+    workoutExercises: (WorkoutExercise & {
+        exercise: Exercise
+        sets: WorkoutSet[]
+    })[]
 }
 
 export type WorkoutSet = {
