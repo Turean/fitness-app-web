@@ -1,12 +1,15 @@
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Suspense } from "react"
 
+import { SetTable } from "@/components/set-table"
+import { buttonVariants } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
-import { formatLongDate, formatWeight } from "@/lib/format"
+import { formatLongDate } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import type { SessionDetail } from "@/lib/types"
 
 export const metadata: Metadata = {
@@ -68,44 +71,43 @@ async function Session({ params }: Pick<PageProps<"/sessions/[id]">, "params">) 
             ) : (
                 <ul className="flex flex-col gap-3">
                     {exercises.map((we) => (
-                        <li key={we.id} className="rounded-lg border p-4">
-                            <h2 className="font-semibold">{we.exercise.name}</h2>
-                            <p className="text-sm text-muted-foreground">
-                                {we.exercise.muscleGroup}
-                            </p>
+                        <li key={we.id}>
+                            <Link
+                                href={`/sessions/${session.id}/exercises/${we.id}`}
+                                className="block rounded-lg border p-4 transition-colors hover:bg-muted/50 active:bg-muted"
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <h2 className="font-semibold">{we.exercise.name}</h2>
+                                        <p className="text-sm text-muted-foreground">
+                                            {we.exercise.muscleGroup}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                                </div>
 
-                            {we.sets.length === 0 ? (
-                                <p className="mt-3 text-sm text-muted-foreground">
-                                    No sets logged.
-                                </p>
-                            ) : (
-                                <table className="mt-3 w-full text-sm tabular-nums">
-                                    <thead className="text-left text-xs text-muted-foreground">
-                                        <tr>
-                                            <th className="w-12 pb-1 font-medium">Set</th>
-                                            <th className="pb-1 font-medium">Reps</th>
-                                            <th className="pb-1 text-right font-medium">Weight</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {we.sets.map((set) => (
-                                            <tr key={set.id} className="border-t">
-                                                <td className="py-2 text-muted-foreground">
-                                                    {set.setNumber}
-                                                </td>
-                                                <td className="py-2">{set.reps}</td>
-                                                <td className="py-2 text-right font-medium">
-                                                    {formatWeight(set.weight)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
+                                {we.sets.length === 0 ? (
+                                    <p className="mt-3 text-sm text-muted-foreground">
+                                        No sets logged. Tap to log one.
+                                    </p>
+                                ) : (
+                                    <div className="mt-3">
+                                        <SetTable sets={we.sets} />
+                                    </div>
+                                )}
+                            </Link>
                         </li>
                     ))}
                 </ul>
             )}
+
+            <Link
+                href={`/sessions/${session.id}/exercises/new`}
+                className={cn(buttonVariants({ variant: "outline" }), "mt-4 h-14 w-full text-base")}
+            >
+                <Plus />
+                Add exercise
+            </Link>
         </>
     )
 }
