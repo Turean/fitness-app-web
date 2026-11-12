@@ -42,7 +42,7 @@ The screens map onto what actually happens in a gym:
 <!-- prettier-ignore -->
 | Path | Auth | Purpose |
 |---|---|---|
-| `/` | Yes | **The home page.** Below the app bar: *Welcome, {name}*, a full-width *Start a session* button that links to `/sessions/new`, then *Recent sessions*: the **five** newest, each with its type, date (with weekday), exercise count and note, and a *Show all* link beside the heading. Signed-out visitors are sent to `/login` by `proxy.ts`. |
+| `/` | Yes | **The home page.** Below the app bar: *Welcome, {name}*, a full-width *Start a session* button that links to `/sessions/new`, then *Recent sessions*: the **five** newest, each with its type, date (with weekday), exercise count and note, and a *Show all* link beside the heading. At the bottom, a link to the *Exercise library*. Signed-out visitors are sent to `/login` by `proxy.ts`. |
 | `/login` | No | Username + password. On success sets the cookie and redirects to `/`. |
 | `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/`. |
 | `/sessions` | Yes | Every session, newest first, in the same cards as the home page, with a *Home* back link. Reached from *Show all*. |
@@ -50,7 +50,7 @@ The screens map onto what actually happens in a gym:
 | `/sessions/[id]` | Yes | **Built (view only).** One session in full: type, the date written out, the note, a count of exercises and sets, then every exercise with its muscle group and a table of its sets — set number, reps, weight. Reached by tapping any session card; *All sessions* goes back. An *＋ Add exercise* button under the list opens `/sessions/[id]/exercises/new`. Still to add: *Edit* note, *Delete session*. |
 | `/sessions/[id]/exercises/new` | Yes | **Add an exercise** to an existing session. The same picker as *Start a session* — the library grouped by muscle group, or *＋ New exercise…* — with a *So far: …* line naming the exercises already in the session. Lands on the new exercise's logging screen. Reached from *＋ Add exercise* on the session page and *Next exercise* on the logging screen. |
 | `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen. Built: logging sets.** The exercise name and muscle group, then large *Reps* and *Weight (kg)* fields and an *Add set N* button, then the sets so far. After each set the fields keep its reps and weight, so a repeated set is one tap. Start session lands here, and each exercise card on the session page opens it. A back link returns to the session, and *Next exercise* under the sets adds the next one. Still to add: edit and delete a set, *Swap exercise*, *Remove from session*. |
-| `/exercises` | Yes | The exercise library: add, rename, change muscle group, delete. |
+| `/exercises` | Yes | **The exercise library. Built: view only.** Every exercise the user has created, grouped by muscle group in alphabetical order, each group with its count, plus a total like "6 exercises · 4 muscle groups". Reached from the link at the bottom of the home page; a back link returns home. A new user sees how exercises get created and a *Start a session* button. Still to add: add, rename, change muscle group, delete. |
 
 Signed-in pages share a layout with a header showing the user's name (from `GET /verify`) and a *Log out* button.
 
@@ -304,7 +304,7 @@ app/
           [weId]/
             page.tsx         # the logging screen
             add-set-form.tsx # Client Component: reps, weight, Add set
-    exercises/page.tsx       # (planned)
+    exercises/page.tsx       # the exercise library, grouped by muscle group
   actions/                   # Server Actions, one file per resource
     auth.ts                  # login, register, logout
     sessions.ts              # createSession — session plus its first exercise
@@ -394,12 +394,13 @@ npm run dev    # http://localhost:3000
 - `/sessions/new` — choose the type and the first exercise, or create a new exercise on the spot, then land on its logging screen
 - The logging screen, `/sessions/[id]/exercises/[weId]` — log sets one at a time; the fields keep the last set's reps and weight
 - `/sessions/[id]/exercises/new` — add as many exercises to a session as you do, from the session page or with *Next exercise*
+- `/exercises` — the exercise library, grouped by muscle group, linked from the bottom of the home page
 
 ## Not Yet Built
 
 - Editing on `/sessions/[id]` — the note, deleting the session
 - On the logging screen — edit and delete a set, swap the exercise, remove it from the session
-- `/exercises` — the exercise library
+- On `/exercises` — adding, renaming and deleting exercises from the library
 - `error.tsx` — a friendly error page with a retry button
 - Optimistic set logging with `useOptimistic`, so a set appears the instant it's tapped rather than after the round trip
 - Offline logging — gyms are often basements with no signal; sets would queue locally and sync later

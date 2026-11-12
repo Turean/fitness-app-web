@@ -1,4 +1,4 @@
-import { ChevronRight, Plus } from "lucide-react"
+import { ChevronRight, Dumbbell, Plus } from "lucide-react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Suspense } from "react"
@@ -50,6 +50,18 @@ export default function HomePage() {
                     />
                 </Suspense>
             </section>
+
+            <Link
+                href="/exercises"
+                className="mt-8 flex items-center gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 active:bg-muted"
+            >
+                <Dumbbell className="size-5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                    <p className="font-medium">Exercise library</p>
+                    <p className="text-sm text-muted-foreground">Every exercise you’ve created</p>
+                </div>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
         </>
     )
 }
