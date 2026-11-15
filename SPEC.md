@@ -174,7 +174,7 @@ Error bodies are `{ msg: string }`. They aren't a type in `lib/types.ts`: `lib/a
 | Attribute | Value | Why |
 |---|---|---|
 | `httpOnly` | `true` | Unreadable from browser JavaScript |
-| `secure` | `true` in production | Never sent over plain HTTP |
+| `secure` | `true` when the page was reached over HTTPS | Never sent over plain HTTP. Decided from the Server Action's `Origin` header, which Next has already checked against the `Host`, not from `NODE_ENV`: Safari drops a `Secure` cookie set over plain HTTP — even on `localhost`, where Chrome and Firefox make an exception — so tying it to the build mode broke `npm run start` on `http://localhost` in Safari. The user was signed in for exactly one page |
 | `sameSite` | `lax` | Sent on normal navigation, not on cross-site POSTs |
 | `path` | `/` | Every page needs it |
 | `maxAge` | 30 days | Matches the token's own 30-day expiry |

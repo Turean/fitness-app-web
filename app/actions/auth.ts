@@ -1,6 +1,6 @@
 "use server"
 
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { api, ApiError } from "@/lib/api"
@@ -100,9 +100,20 @@ async function startSession(token: string) {
     const cookieStore = await cookies()
     cookieStore.set("token", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: await isHttps(),
         sameSite: "lax",
         path: "/",
         maxAge: THIRTY_DAYS,
     })
+}
+
+// Secure follows the page's real protocol, not the build mode: Safari drops
+// a Secure cookie set over plain HTTP, even on localhost, so `npm run start`
+// on http://localhost would sign the user in for exactly one page. Next has
+// already checked a Server Action's Origin against the Host.
+async function isHttps() {
+    const origin = (await headers()).get("origin")
+    return origin === null
+        ? process.env.NODE_ENV === "production"
+        : origin.startsWith("https://")
 }
