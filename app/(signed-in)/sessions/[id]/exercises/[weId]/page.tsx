@@ -77,7 +77,7 @@ async function LogSets({ params }: Pick<Props, "params">) {
             </section>
 
             <Link
-                href={`/sessions/${session.id}/exercises/new`}
+                href={`/exercises?session=${session.id}`}
                 className={cn(buttonVariants({ variant: "outline" }), "mt-8 h-14 w-full text-base")}
             >
                 <Plus />

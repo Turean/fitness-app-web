@@ -66,7 +66,7 @@ async function Session({ params }: Pick<PageProps<"/sessions/[id]">, "params">) 
 
             {exercises.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No exercises in this session yet.
+                    No exercises yet. Add your first one below.
                 </p>
             ) : (
                 <ul className="flex flex-col gap-3">
@@ -102,7 +102,7 @@ async function Session({ params }: Pick<PageProps<"/sessions/[id]">, "params">) 
             )}
 
             <Link
-                href={`/sessions/${session.id}/exercises/new`}
+                href={`/exercises?session=${session.id}`}
                 className={cn(buttonVariants({ variant: "outline" }), "mt-4 h-14 w-full text-base")}
             >
                 <Plus />

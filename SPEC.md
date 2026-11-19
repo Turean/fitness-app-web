@@ -29,10 +29,10 @@ No client-side data library (TanStack Query, SWR). Server Components fetch, Serv
 
 The screens map onto what actually happens in a gym:
 
-1. **Arrive** → the home page at `/`, which greets you by name → tap **Start a session** → `/sessions/new`, where you choose PUSH, PULL or LEGS and the first exercise — from your library, or a new one typed in on the spot → land straight on that exercise's logging screen. A note can be added afterwards on the session page.
-2. **Pick an exercise** → *＋ Add exercise* on the session page → choose from your library, or type in a new one → land straight on that exercise's logging screen.
+1. **Arrive** → the home page at `/`, which greets you by name → tap **Start a session** → `/sessions/new`, where you choose PUSH, PULL or LEGS → land on the new, empty session's page. A note can be added afterwards on the session page.
+2. **Pick an exercise** → *＋ Add exercise* on the session page → the exercise library, opened for that session → tap an exercise, or create a new one with *＋ New exercise* → land straight on that exercise's logging screen.
 3. **Log a set** → enter reps and weight → *Add set*. The form stays on the page and **keeps the last weight and reps filled in**, because most sets repeat them. Repeat.
-4. **Next exercise** → tap *Next exercise* at the bottom of the logging screen → *Add an exercise* for the same session → step 3 again. A session holds as many exercises as you do.
+4. **Next exercise** → tap *Next exercise* at the bottom of the logging screen → the library again, for the same session → step 3 again. A session holds as many exercises as you do.
 5. **Mistake** → tap a set to fix its reps or weight, or swap the exercise if the wrong one was picked; the sets already logged stay attached.
 
 ---
@@ -46,11 +46,10 @@ The screens map onto what actually happens in a gym:
 | `/login` | No | Username + password. On success sets the cookie and redirects to `/`. |
 | `/register` | No | Name, username, email, password. On success **signs the user straight in** — the API returns a token on registration — and redirects to `/`. |
 | `/sessions` | Yes | Every session, newest first, in the same cards as the home page, with a *Home* back link. Reached from *Show all*. |
-| `/sessions/new` | Yes | **Start a session.** PUSH, PULL or LEGS as three large choices, then the first exercise from a picker grouped by muscle group, with *＋ New exercise…* at the end, which opens fields for a name and a muscle group. A user with an empty library sees those fields open from the start. Submitting creates the session and lands on its page. |
-| `/sessions/[id]` | Yes | **Built (view only).** One session in full: type, the date written out, the note, a count of exercises and sets, then every exercise with its muscle group and a table of its sets — set number, reps, weight. Reached by tapping any session card; *All sessions* goes back. An *＋ Add exercise* button under the list opens `/sessions/[id]/exercises/new`. Still to add: *Edit* note, *Delete session*. |
-| `/sessions/[id]/exercises/new` | Yes | **Add an exercise** to an existing session. The same picker as *Start a session* — the library grouped by muscle group, or *＋ New exercise…* — with a *So far: …* line naming the exercises already in the session. Lands on the new exercise's logging screen. Reached from *＋ Add exercise* on the session page and *Next exercise* on the logging screen. |
-| `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen. Built: logging sets.** The exercise name and muscle group, then large *Reps* and *Weight (kg)* fields and an *Add set N* button, then the sets so far. After each set the fields keep its reps and weight, so a repeated set is one tap. Start session lands here, and each exercise card on the session page opens it. A back link returns to the session, and *Next exercise* under the sets adds the next one. Still to add: edit and delete a set, *Swap exercise*, *Remove from session*. |
-| `/exercises` | Yes | **The exercise library. Built: view only.** Every exercise the user has created, grouped by muscle group in alphabetical order, each group with its count, plus a total like "6 exercises · 4 muscle groups". Reached from the link at the bottom of the home page; a back link returns home. A new user sees how exercises get created and a *Start a session* button. Still to add: add, rename, change muscle group, delete. |
+| `/sessions/new` | Yes | **Start a session.** PUSH, PULL or LEGS as three large choices and a *Start session* button. It creates the session only — exercises are added from the session page — and lands on that session's page. |
+| `/sessions/[id]` | Yes | **Built (view only).** One session in full: type, the date written out, the note, a count of exercises and sets, then every exercise with its muscle group and a table of its sets — set number, reps, weight. Reached by tapping any session card; *All sessions* goes back. An *＋ Add exercise* button under the list opens the library for this session, `/exercises?session=[id]`. Still to add: *Edit* note, *Delete session*. |
+| `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen. Built: logging sets.** The exercise name and muscle group, then large *Reps* and *Weight (kg)* fields and an *Add set N* button, then the sets so far. After each set the fields keep its reps and weight, so a repeated set is one tap. Adding an exercise to a session lands here, and each exercise card on the session page opens it. A back link returns to the session, and *Next exercise* under the sets opens the library for the session. Still to add: edit and delete a set, *Swap exercise*, *Remove from session*. |
+| `/exercises` | Yes | **The exercise library. Built: view and add.** Every exercise the user has created, grouped by muscle group in alphabetical order, each group with its count, plus a total like "6 exercises · 4 muscle groups". A *＋ New exercise* button opens a name field and a muscle-group picker; *Add to library* creates it and keeps the form open for the next one. An empty library shows the form open from the start. Reached from the link at the bottom of the home page; a back link returns home. **With `?session=[id]`** it is how exercises get into a session: the back link returns to that session, every row is a button that adds that exercise and lands on its logging screen, rows already in the session say *In session* and open their logging screen instead, and the form's button becomes *Add to library and session*. A non-numeric `session` is ignored; a session that doesn't exist, or isn't yours, is a 404. Still to add: rename, change muscle group, delete. |
 
 Signed-in pages share a layout with a header showing the user's name (from `GET /verify`) and a *Log out* button.
 
@@ -68,21 +67,21 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Layout header | `GET /verify` |
 | `/sessions` | `GET /sessions` |
 | `/` (home) | `GET /verify` for the welcome line and `GET /sessions?limit=5` for the list, so only five sessions are ever fetched. The `/verify` call is shared with the header — see *One user lookup per request* |
-| `/sessions/new` | `GET /exercises` for the picker |
-| Start session | `POST /exercises` first if it's a new exercise, then `POST /sessions`, then `POST /sessions/:id/workoutExercises` → redirect to that exercise's logging screen. If the last call fails, `DELETE /sessions/:id` removes the session it just made |
+| `/sessions/new` | none |
+| Start session | `POST /sessions` → redirect to `/sessions/[id]` |
 | `/sessions/[id]` | `GET /sessions/:id` |
 | Edit session | `PATCH /sessions/:id` |
 | Delete session | `DELETE /sessions/:id` → redirect to `/` |
-| `/sessions/[id]/exercises/new` | `GET /sessions/:id` (for the back link and *So far*) and `GET /exercises` (for the picker), in parallel |
-| Add exercise to session | `POST /exercises` first if it's a new exercise, then `POST /sessions/:id/workoutExercises` → redirect to the logging screen |
+| Add exercise to session | `POST /sessions/:id/workoutExercises` → redirect to the logging screen |
 | Logging screen | `GET /sessions/:id`, which now carries every exercise's sets |
 | Add set | `POST /workoutExercises/:weId/sets` |
 | Edit set | `PATCH /workoutExercises/:weId/sets/:setId` |
 | Delete set | `DELETE /workoutExercises/:weId/sets/:setId` |
 | Swap exercise | `GET /exercises` for the picker, then `PATCH /sessions/:id/workoutExercises/:weId` |
 | Remove from session | `DELETE /sessions/:id/workoutExercises/:weId` → redirect to `/sessions/[id]` |
-| `/exercises` | `GET /exercises` |
-| Add / edit / delete exercise | `POST /exercises`, `PATCH /exercises/:id`, `DELETE /exercises/:id` |
+| `/exercises` | `GET /exercises`, plus `GET /sessions/:id` in parallel with `?session=` (for the back link and the *In session* rows) |
+| New exercise | `POST /exercises` → refresh. With `?session=`, then `POST /sessions/:id/workoutExercises` → redirect to the logging screen |
+| Edit / delete exercise | `PATCH /exercises/:id`, `DELETE /exercises/:id` |
 | Log in | `POST /login` → set cookie |
 | Register | `POST /users` → set cookie |
 | Log out | none — deletes the cookie |
@@ -234,16 +233,18 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Session types are a fixed choice.** The API stores any string and uppercases it, but the spec names three types. They're defined once in `lib/session-types.ts` — not in the actions file, because a `"use server"` file may only export async functions. `/sessions/new` offers exactly those three, and the `createSession` action checks the submitted value against the same list, since a Server Action is a public endpoint that can be called without the form.
 
+**Sessions start empty.** *Start session* makes one API call and nothing else. Exercises are added afterwards, all through the library, so there is a single place where an exercise is chosen or created.
+
 **Muscle groups are a fixed list too.** `lib/muscle-groups.ts` holds Chest, Back, Shoulders, Arms, Legs and Core — the names the seed data already uses — so a library doesn't end up with "Chest", "chest" and "Pecs" as three groups. A new exercise's muscle group is a picker from that list, checked again in the action.
 
-**One exercise picker, one resolver.** *Start a session* and *Add an exercise* both choose an exercise the same way, so both use `components/exercise-picker.tsx` on the page and `resolveExercise()` in `lib/exercise-choice.ts` in the action. `resolveExercise` returns the chosen exercise's id, creating the exercise first when the user typed in a new one. It lives in a plain `server-only` module rather than a `"use server"` file, because every export of a `"use server"` file can be called from the browser, and this one creates exercises.
+**The library is the exercise picker.** With `?session=[id]` the list is one `<form>` whose rows are submit buttons named `exerciseId`, each carrying its exercise's id, so the tapped row's id arrives in the form data and one `useActionState` and one double-tap guard cover every row. The tapped row shows *Adding…*, read from the submit event's `submitter`. Rows are big tap targets rather than a `<select>`, which on a phone hides the library behind a scrolling wheel.
 
-**Two API calls, one session.** Starting a session with its first exercise takes `POST /sessions` and then `POST /sessions/:id/workoutExercises`. If the second fails, the action deletes the session the first created, so the user is never left with an empty session they didn't ask for. A new exercise is created *before* the session for the same reason: if its name is rejected, nothing else has been made yet. The order is the safeguard.
+**A new exercise, then the session.** *Add to library and session* takes `POST /exercises` and then `POST /sessions/:id/workoutExercises`. If the second fails, the exercise stays — it's a valid library entry — and the error says it's in the library now, so tapping its row retries.
 
-**Forms rebuild their fields after a failed attempt.** React resets a form after every action, returning each field to its *default*. A field showing what the user just typed is therefore wiped unless its default is that value. Forms with more than text inputs — `/sessions/new` has radios and two pickers — render their fields in a child component keyed by an `attempt` counter, which the action's state carries and bumps on every result. Each failed attempt re-mounts the fields with the values just submitted as their defaults, so React's reset restores exactly them. Two details make it work, each found by a test failing:
+**Forms rebuild their fields after a failed attempt.** React resets a form after every action, returning each field to its *default*. A field showing what the user just typed is therefore wiped unless its default is that value. Forms with more than text inputs — `/sessions/new` has radios, the new-exercise form a picker — render their fields in a child component keyed by an `attempt` counter, which the action's state carries and bumps on every result. Each failed attempt re-mounts the fields with the values just submitted as their defaults, so React's reset restores exactly them. Two details make it work, each found by a test failing:
 
 - The counter lives **in the action's state**, not in a separate `useState`. A separate counter updates first, re-mounting the fields with the *previous* state's values.
-- Every field is **uncontrolled**. A controlled `<select>` (`value=` plus `onChange`) is sent to its first option by the reset and React never corrects it, so the screen and React's state disagree — on this page, a picker showing one exercise while the form would submit another. `onChange` is still used, only to show or hide the new-exercise fields.
+- Every field is **uncontrolled**. A controlled `<select>` (`value=` plus `onChange`) is sent to its first option by the reset and React never corrects it, so the screen and React's state disagree — a picker showing one muscle group while the form would submit another.
 
 **Text in form fields is at least 16 px.** iPhone Safari zooms the whole page when a field with smaller text is focused, which on a phone mid-workout means the layout jumps every time a picker is tapped.
 
@@ -293,28 +294,28 @@ app/
     sessions/
       page.tsx               # every session
       new/
-        page.tsx             # loads the exercise library
-        new-session-form.tsx # Client Component: type, exercise, new exercise
+        page.tsx             # start a session
+        new-session-form.tsx # Client Component: PUSH, PULL or LEGS
       [id]/
         page.tsx             # one session, every set
         exercises/
-          new/
-            page.tsx         # add an exercise to this session
-            add-exercise-form.tsx
           [weId]/
             page.tsx         # the logging screen
             add-set-form.tsx # Client Component: reps, weight, Add set
-    exercises/page.tsx       # the exercise library, grouped by muscle group
+    exercises/
+      page.tsx               # the library; with ?session=, adds to that session
+      new-exercise-form.tsx  # Client Component: name, muscle group
+      add-to-session-list.tsx # Client Component: one form, a submit button per row
   actions/                   # Server Actions, one file per resource
     auth.ts                  # login, register, logout
-    sessions.ts              # createSession — session plus its first exercise
-    workoutExercises.ts      # addExercise
+    sessions.ts              # createSession
+    workoutExercises.ts      # addExercise — an existing exercise to a session
     sets.ts                  # addSet
-    exercises.ts             # (planned)
+    exercises.ts             # createExercise — to the library, and optionally a session
   signout/route.ts           # deletes the cookie, then redirects to /login
 components/
   session-list.tsx           # session cards, shared by / and /sessions
-  exercise-picker.tsx        # exercise select plus New exercise fields, shared by both forms
+  exercise-group.tsx         # a muscle group's heading and list, shared by both library modes
   set-table.tsx              # a table of sets, shared by the session page and logging screen
   ui/                        # shadcn/ui components — generated, owned by this repo
 lib/
@@ -323,8 +324,7 @@ lib/
   user.ts                    # getCurrentUser(), one GET /verify per request
   session-types.ts           # PUSH, PULL, LEGS
   muscle-groups.ts           # Chest, Back, Shoulders, Arms, Legs, Core
-  exercise-groups.ts         # groups and sorts a library for the picker
-  exercise-choice.ts         # server-only: read and resolve the picker's choice
+  exercise-groups.ts         # groups and sorts a library by muscle group
   utils.ts                   # cn(), generated by shadcn
   form-data.ts               # readNumber and readString for Server Actions
   use-submit-guard.ts        # double-tap guard for forms
@@ -391,16 +391,16 @@ npm run dev    # http://localhost:3000
 - `lib/format.ts` — `formatWeight` (`7.5 kg`, **BW**) and the date formats
 - `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
 - `lib/user.ts` — `getCurrentUser()`, shared by the header and the welcome line
-- `/sessions/new` — choose the type and the first exercise, or create a new exercise on the spot, then land on its logging screen
+- `/sessions/new` — choose the type; lands on the new session's page
 - The logging screen, `/sessions/[id]/exercises/[weId]` — log sets one at a time; the fields keep the last set's reps and weight
-- `/sessions/[id]/exercises/new` — add as many exercises to a session as you do, from the session page or with *Next exercise*
-- `/exercises` — the exercise library, grouped by muscle group, linked from the bottom of the home page
+- `/exercises` — the exercise library, grouped by muscle group, linked from the bottom of the home page; add exercises to it
+- `/exercises?session=[id]` — add exercises to a session, existing or new, from the session page or with *Next exercise*
 
 ## Not Yet Built
 
 - Editing on `/sessions/[id]` — the note, deleting the session
 - On the logging screen — edit and delete a set, swap the exercise, remove it from the session
-- On `/exercises` — adding, renaming and deleting exercises from the library
+- On `/exercises` — renaming and deleting exercises
 - `error.tsx` — a friendly error page with a retry button
 - Optimistic set logging with `useOptimistic`, so a set appears the instant it's tapped rather than after the round trip
 - Offline logging — gyms are often basements with no signal; sets would queue locally and sync later

@@ -3,94 +3,108 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Suspense } from "react"
 
-import { buttonVariants } from "@/components/ui/button"
+import { ExerciseGroup } from "@/components/exercise-group"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 import { groupExercises } from "@/lib/exercise-groups"
-import type { Exercise } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import type { Exercise, SessionDetail } from "@/lib/types"
+
+import { AddToSessionList } from "./add-to-session-list"
+import { NewExerciseForm } from "./new-exercise-form"
 
 export const metadata: Metadata = {
     title: "Exercise library",
 }
 
-export default function ExercisesPage() {
+type Props = PageProps<"/exercises">
+
+export default function ExercisesPage({ searchParams }: Props) {
     return (
-        <>
-            <Link
-                href="/"
-                className="-ml-2 inline-flex h-11 items-center gap-0.5 px-2 text-sm text-muted-foreground"
-            >
-                <ChevronLeft className="size-4" />
-                Home
-            </Link>
-
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Exercise library</h1>
-
-            <Suspense fallback={<LibrarySkeleton />}>
-                <Library />
-            </Suspense>
-        </>
+        <Suspense fallback={<LibrarySkeleton />}>
+            <Library searchParams={searchParams} />
+        </Suspense>
     )
 }
 
-async function Library() {
-    const exercises = await api<Exercise[]>("/exercises")
+// ?session=ID opens the library for adding an exercise to that session.
+async function Library({ searchParams }: Pick<Props, "searchParams">) {
+    const { session: sessionParam } = await searchParams
 
-    if (exercises.length === 0) {
-        return (
-            <div className="mt-6 flex flex-col gap-4 rounded-lg border border-dashed p-6 text-center">
-                <p className="text-sm text-muted-foreground">
-                    No exercises yet. You create them when you start a session or add an
-                    exercise to one.
-                </p>
-                <Link
-                    href="/sessions/new"
-                    className={cn(buttonVariants(), "h-11 w-full")}
-                >
-                    Start a session
-                </Link>
-            </div>
-        )
-    }
+    // The id goes into an API path, and fetch resolves "..".
+    const sessionId =
+        typeof sessionParam === "string" && /^\d+$/.test(sessionParam) ? sessionParam : null
 
+    const [exercises, session] = await Promise.all([
+        api<Exercise[]>("/exercises"),
+        sessionId === null ? null : api<SessionDetail>(`/sessions/${sessionId}`),
+    ])
     const groups = groupExercises(exercises)
 
     return (
         <>
+            <Link
+                href={session ? `/sessions/${session.id}` : "/"}
+                className="-ml-2 inline-flex h-11 items-center gap-0.5 px-2 text-sm text-muted-foreground"
+            >
+                <ChevronLeft className="size-4" />
+                {session ? `${session.sessionType} session` : "Home"}
+            </Link>
+
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Exercise library</h1>
             <p className="mt-1 mb-6 text-muted-foreground">
-                {exercises.length} {exercises.length === 1 ? "exercise" : "exercises"}
-                {" · "}
-                {groups.length} {groups.length === 1 ? "muscle group" : "muscle groups"}
+                {session
+                    ? `Tap an exercise to add it to your ${session.sessionType} session.`
+                    : exercises.length === 0
+                      ? "No exercises yet."
+                      : `${exercises.length} ${exercises.length === 1 ? "exercise" : "exercises"} · ${groups.length} ${groups.length === 1 ? "muscle group" : "muscle groups"}`}
             </p>
 
-            <div className="flex flex-col gap-6">
-                {groups.map((group) => (
-                    <section key={group.muscleGroup}>
-                        <h2 className="mb-2 flex items-baseline justify-between text-sm font-medium text-muted-foreground">
-                            {group.muscleGroup}
-                            <span className="tabular-nums">{group.exercises.length}</span>
-                        </h2>
-                        <ul className="divide-y rounded-lg border">
-                            {group.exercises.map((exercise) => (
-                                <li key={exercise.id} className="px-4 py-3 font-medium">
-                                    {exercise.name}
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-                ))}
-            </div>
+            <NewExerciseForm
+                key={session?.id ?? "library"}
+                sessionId={session?.id ?? null}
+                startOpen={exercises.length === 0}
+            />
+
+            {groups.length > 0 && (
+                <div className="mt-8 flex flex-col gap-6">
+                    {session ? (
+                        <AddToSessionList
+                            sessionId={session.id}
+                            groups={groups}
+                            inSession={Object.fromEntries(
+                                session.workoutExercises.map((we) => [we.exerciseId, we.id]),
+                            )}
+                        />
+                    ) : (
+                        groups.map((group) => (
+                            <ExerciseGroup
+                                key={group.muscleGroup}
+                                muscleGroup={group.muscleGroup}
+                                count={group.exercises.length}
+                            >
+                                {group.exercises.map((exercise) => (
+                                    <li key={exercise.id} className="px-4 py-3 font-medium">
+                                        {exercise.name}
+                                    </li>
+                                ))}
+                            </ExerciseGroup>
+                        ))
+                    )}
+                </div>
+            )}
         </>
     )
 }
 
 function LibrarySkeleton() {
     return (
-        <div className="flex flex-col gap-6 pt-2">
-            <Skeleton className="h-5 w-40" />
+        <div className="flex flex-col gap-2">
+            <Skeleton className="h-11 w-24" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-5 w-1/2" />
+            <Skeleton className="mt-4 h-14 w-full" />
             {[0, 1].map((i) => (
-                <div key={i} className="flex flex-col gap-2">
+                <div key={i} className="mt-6 flex flex-col gap-2">
                     <Skeleton className="h-4 w-20" />
                     <Skeleton className="h-24 w-full" />
                 </div>
