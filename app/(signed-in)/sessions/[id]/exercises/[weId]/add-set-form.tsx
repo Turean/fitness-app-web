@@ -12,11 +12,11 @@ type FormState = AddSetState & { attempt?: number }
 
 export function AddSetForm({
     workoutExerciseId,
-    setCount,
+    nextSetNumber,
     lastSet,
 }: {
     workoutExerciseId: number
-    setCount: number
+    nextSetNumber: number
     lastSet?: { reps: number; weight: number }
 }) {
     const [state, formAction, pending] = useActionState<FormState, FormData>(
@@ -36,7 +36,10 @@ export function AddSetForm({
 
     return (
         <form action={formAction} onSubmit={guard} className="flex flex-col gap-3">
-            <Fields key={`${setCount}-${state.attempt ?? 0}`} defaults={defaults} />
+            <Fields
+                key={`${nextSetNumber}-${lastSet?.reps}-${lastSet?.weight}-${state.attempt ?? 0}`}
+                defaults={defaults}
+            />
 
             {state.error && (
                 <p role="alert" className="text-sm text-destructive">
@@ -45,7 +48,7 @@ export function AddSetForm({
             )}
 
             <Button type="submit" disabled={pending} className="h-14 w-full text-base">
-                {pending ? "Adding…" : `Add set ${setCount + 1}`}
+                {pending ? "Adding…" : `Add set ${nextSetNumber}`}
             </Button>
         </form>
     )

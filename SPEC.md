@@ -33,7 +33,7 @@ The screens map onto what actually happens in a gym:
 2. **Pick an exercise** → *＋ Add exercise* on the session page → the exercise library, opened for that session → tap an exercise, or create a new one with *＋ New exercise* → land straight on that exercise's logging screen.
 3. **Log a set** → enter reps and weight → *Add set*. The form stays on the page and **keeps the last weight and reps filled in**, because most sets repeat them. Repeat.
 4. **Next exercise** → tap *Next exercise* at the bottom of the logging screen → the library again, for the same session → step 3 again. A session holds as many exercises as you do.
-5. **Mistake** → tap a set to fix its reps or weight, or swap the exercise if the wrong one was picked; the sets already logged stay attached.
+5. **Mistake** → tap a set on the logging screen to fix its reps or weight, or delete it; the sets after it move up a number. Swapping the exercise if the wrong one was picked is still to come.
 
 ---
 
@@ -48,7 +48,7 @@ The screens map onto what actually happens in a gym:
 | `/sessions` | Yes | Every session, newest first, in the same cards as the home page, with a *Home* back link. Reached from *Show all*. |
 | `/sessions/new` | Yes | **Start a session.** PUSH, PULL or LEGS as three large choices and a *Start session* button. It creates the session only — exercises are added from the session page — and lands on that session's page. |
 | `/sessions/[id]` | Yes | **Built (view only).** One session in full: type, the date written out, the note, a count of exercises and sets, then every exercise with its muscle group and a table of its sets — set number, reps, weight. Reached by tapping any session card; *All sessions* goes back. An *＋ Add exercise* button under the list opens the library for this session, `/exercises?session=[id]`. Still to add: *Edit* note, *Delete session*. |
-| `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen. Built: logging sets.** The exercise name and muscle group, then large *Reps* and *Weight (kg)* fields and an *Add set N* button, then the sets so far. After each set the fields keep its reps and weight, so a repeated set is one tap. Adding an exercise to a session lands here, and each exercise card on the session page opens it. A back link returns to the session, and *Next exercise* under the sets opens the library for the session. Still to add: edit and delete a set, *Swap exercise*, *Remove from session*. |
+| `/sessions/[id]/exercises/[weId]` | Yes | **The logging screen. Built: logging, editing and deleting sets.** The exercise name and muscle group, then large *Reps* and *Weight (kg)* fields and an *Add set N* button, then the sets so far. After each set the fields keep its reps and weight, so a repeated set is one tap. Each set is a row you tap to open an *Edit set N* dialog with its reps and weight, *Save*, and *Delete set*, which asks *Delete set N?* before deleting. Adding an exercise to a session lands here, and each exercise card on the session page opens it. A back link returns to the session, and *Next exercise* under the sets opens the library for the session. Still to add: *Swap exercise*, *Remove from session*. |
 | `/exercises` | Yes | **The exercise library. Built: view and add.** Every exercise the user has created, grouped by muscle group in alphabetical order, each group with its count, plus a total like "6 exercises · 4 muscle groups". A *＋ New exercise* button opens a name field and a muscle-group picker; *Add to library* creates it and keeps the form open for the next one. An empty library shows the form open from the start. Reached from the link at the bottom of the home page; a back link returns home. **With `?session=[id]`** it is how exercises get into a session: the back link returns to that session, every row is a button that adds that exercise and lands on its logging screen, rows already in the session say *In session* and open their logging screen instead, and the form's button becomes *Add to library and session*. A non-numeric `session` is ignored; a session that doesn't exist, or isn't yours, is a 404. Still to add: rename, change muscle group, delete. |
 
 Signed-in pages share a layout with a header showing the user's name (from `GET /verify`) and a *Log out* button.
@@ -76,7 +76,7 @@ Which API calls each page and action makes. Every call goes through `lib/api.ts`
 | Logging screen | `GET /sessions/:id`, which now carries every exercise's sets |
 | Add set | `POST /workoutExercises/:weId/sets` |
 | Edit set | `PATCH /workoutExercises/:weId/sets/:setId` |
-| Delete set | `DELETE /workoutExercises/:weId/sets/:setId` |
+| Delete set | `DELETE /workoutExercises/:weId/sets/:setId` — the API renumbers the sets after it |
 | Swap exercise | `GET /exercises` for the picker, then `PATCH /sessions/:id/workoutExercises/:weId` |
 | Remove from session | `DELETE /sessions/:id/workoutExercises/:weId` → redirect to `/sessions/[id]` |
 | `/exercises` | `GET /exercises`, plus `GET /sessions/:id` in parallel with `?session=` (for the back link and the *In session* rows) |
@@ -250,7 +250,7 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Submit buttons guard against a double tap.** `disabled={pending}` only takes effect after React re-renders, and a second tap that lands before then submits again — a second session, or on the logging screen a duplicate set — measured at 54 ms apart. Every form whose action creates something passes `useSubmitGuard(pending)` from `lib/use-submit-guard.ts` to its `onSubmit`: a `useRef` flag set on the first submit, cancelling further submits with `preventDefault()`, cleared once `pending` goes false.
 
-**The add-set form starts from the last set.** Its fields re-mount with a `key` of the set count plus the attempt counter. After a set is logged the count changes, so the fields start from that set's reps and weight — most sets repeat the last one, so the next is a single tap. After an error the attempt changes instead, and the fields keep what was typed. Reps and weight use `inputMode="numeric"` and `"decimal"`, so phones show a number pad, with a decimal point for weights like 62.5.
+**The add-set form starts from the last set.** Its fields re-mount with a `key` built from the next set number, the last set's reps and weight, and the attempt counter. After a set is logged, edited or deleted that key changes, so the fields start from that set's reps and weight — most sets repeat the last one, so the next is a single tap. After an error the attempt changes instead, and the fields keep what was typed. Reps and weight use `inputMode="numeric"` and `"decimal"`, so phones show a number pad, with a decimal point for weights like 62.5.
 
 **Mobile first, one-handed.** Layouts are designed at 375 px wide and scaled up, not down. Tap targets are at least 44 px. The add-set form is the most-used control in the app and gets the most space on the logging screen.
 
@@ -262,7 +262,7 @@ function readNumber(form: FormData, field: string): number | undefined {
 
 **Form field ids come from `useId()`.** With Cache Components, navigating away from a page keeps it mounted but hidden, so it keeps its state if you come back. After going from `/login` to `/register`, both forms are in the document at once. Hard-coded ids like `id="username"` would then appear twice, and a label's `htmlFor` targets the first match in the document, which can be the hidden form's input. Each form calls `useId()` and prefixes its ids with it, so they never collide.
 
-**Destructive actions confirm.** Deleting a session, an exercise or a set opens a shadcn `AlertDialog` first. Deleting a session also says that its exercises and sets go with it, since the API cascades.
+**Destructive actions confirm.** Deleting a set swaps the edit dialog's content for a *Delete set N?* step showing the set's reps and weight, with *Keep it* and *Delete*, rather than stacking a second dialog on the first. Deleting a session or an exercise will open a confirm dialog the same way. Deleting a session also says that its exercises and sets go with it, since the API cascades.
 
 **Cache Components is on, so session reads stream.** `create-next-app` 16.4 turned on `cacheComponents` and `partialPrefetching` in `next.config.ts`, and the app is written for them. A page renders a static shell — layout, header frame, headings — that appears instantly, and anything that calls the API (which reads the `token` cookie) sits inside a `<Suspense>` boundary with a skeleton fallback and streams in. Reading cookies outside a boundary is a **build error**, not just slower. Two rules follow:
 
@@ -302,6 +302,7 @@ app/
           [weId]/
             page.tsx         # the logging screen
             add-set-form.tsx # Client Component: reps, weight, Add set
+            editable-sets.tsx # Client Component: set rows, edit and delete dialog
     exercises/
       page.tsx               # the library; with ?session=, adds to that session
       new-exercise-form.tsx  # Client Component: name, muscle group
@@ -310,13 +311,13 @@ app/
     auth.ts                  # login, register, logout
     sessions.ts              # createSession
     workoutExercises.ts      # addExercise — an existing exercise to a session
-    sets.ts                  # addSet
+    sets.ts                  # addSet, updateSet, deleteSet
     exercises.ts             # createExercise — to the library, and optionally a session
   signout/route.ts           # deletes the cookie, then redirects to /login
 components/
   session-list.tsx           # session cards, shared by / and /sessions
   exercise-group.tsx         # a muscle group's heading and list, shared by both library modes
-  set-table.tsx              # a table of sets, shared by the session page and logging screen
+  set-table.tsx              # a read-only table of sets, on the session page
   ui/                        # shadcn/ui components — generated, owned by this repo
 lib/
   api.ts                     # server-only API client and ApiError
@@ -332,7 +333,7 @@ lib/
 proxy.ts                     # optimistic auth redirects
 ```
 
-shadcn/ui components installed: `button`, `card`, `input`, `label`, `skeleton`. Still to add as the pages need them: `select`, `alert-dialog` (destructive confirms) and `sonner` (toasts).
+shadcn/ui components installed: `button`, `card`, `dialog`, `input`, `label`, `skeleton`. Still to add as the pages need them: `sonner` (toasts).
 
 ---
 
@@ -392,14 +393,14 @@ npm run dev    # http://localhost:3000
 - `proxy.ts` — redirects signed-out requests to `/login` before anything renders, and signed-in ones away from the auth pages
 - `lib/user.ts` — `getCurrentUser()`, shared by the header and the welcome line
 - `/sessions/new` — choose the type; lands on the new session's page
-- The logging screen, `/sessions/[id]/exercises/[weId]` — log sets one at a time; the fields keep the last set's reps and weight
+- The logging screen, `/sessions/[id]/exercises/[weId]` — log sets one at a time; the fields keep the last set's reps and weight; tap a set to edit or delete it
 - `/exercises` — the exercise library, grouped by muscle group, linked from the bottom of the home page; add exercises to it
 - `/exercises?session=[id]` — add exercises to a session, existing or new, from the session page or with *Next exercise*
 
 ## Not Yet Built
 
 - Editing on `/sessions/[id]` — the note, deleting the session
-- On the logging screen — edit and delete a set, swap the exercise, remove it from the session
+- On the logging screen — swap the exercise, remove it from the session
 - On `/exercises` — renaming and deleting exercises
 - `error.tsx` — a friendly error page with a retry button
 - Optimistic set logging with `useOptimistic`, so a set appears the instant it's tapped rather than after the round trip

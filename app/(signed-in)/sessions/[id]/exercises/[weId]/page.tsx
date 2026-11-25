@@ -4,7 +4,6 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Suspense } from "react"
 
-import { SetTable } from "@/components/set-table"
 import { buttonVariants } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
@@ -12,6 +11,7 @@ import type { SessionDetail } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 import { AddSetForm } from "./add-set-form"
+import { EditableSets } from "./editable-sets"
 
 export const metadata: Metadata = {
     title: "Log sets",
@@ -62,7 +62,7 @@ async function LogSets({ params }: Pick<Props, "params">) {
 
             <AddSetForm
                 workoutExerciseId={entry.id}
-                setCount={sets.length}
+                nextSetNumber={(lastSet?.setNumber ?? 0) + 1}
                 lastSet={lastSet && { reps: lastSet.reps, weight: lastSet.weight }}
             />
 
@@ -72,7 +72,7 @@ async function LogSets({ params }: Pick<Props, "params">) {
                         No sets yet. Log your first one above.
                     </p>
                 ) : (
-                    <SetTable sets={sets} />
+                    <EditableSets workoutExerciseId={entry.id} sets={sets} />
                 )}
             </section>
 

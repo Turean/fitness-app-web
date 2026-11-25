@@ -23,7 +23,7 @@ export async function addSet(
         weight: readString(formData, "weight"),
     }
 
-    if (!Number.isInteger(workoutExerciseId) || workoutExerciseId <= 0) {
+    if (!isId(workoutExerciseId)) {
         return { error: "exercise not found", values }
     }
 
@@ -41,4 +41,68 @@ export async function addSet(
 
     refresh()
     return {}
+}
+
+export type EditSetState = AddSetState & { done?: boolean }
+
+export async function updateSet(
+    workoutExerciseId: number,
+    setId: number,
+    _prev: EditSetState,
+    formData: FormData,
+): Promise<EditSetState> {
+    const reps = readNumber(formData, "reps")
+    const weight = readNumber(formData, "weight")
+    const values = {
+        reps: readString(formData, "reps"),
+        weight: readString(formData, "weight"),
+    }
+
+    if (!isId(workoutExerciseId) || !isId(setId)) {
+        return { error: "set not found", values }
+    }
+
+    try {
+        await api<WorkoutSet>(`/workoutExercises/${workoutExerciseId}/sets/${setId}`, {
+            method: "PATCH",
+            body: { reps, weight },
+        })
+    } catch (e) {
+        if (e instanceof ApiError) {
+            return { error: e.message, values }
+        }
+        throw e
+    }
+
+    refresh()
+    return { done: true }
+}
+
+export type DeleteSetState = { error?: string; done?: boolean }
+
+export async function deleteSet(
+    workoutExerciseId: number,
+    setId: number,
+): Promise<DeleteSetState> {
+    if (!isId(workoutExerciseId) || !isId(setId)) {
+        return { error: "set not found" }
+    }
+
+    try {
+        await api<WorkoutSet>(`/workoutExercises/${workoutExerciseId}/sets/${setId}`, {
+            method: "DELETE",
+        })
+    } catch (e) {
+        if (e instanceof ApiError) {
+            return { error: e.message }
+        }
+        throw e
+    }
+
+    refresh()
+    return { done: true }
+}
+
+function isId(value: number) {
+    return Number.isInteger(value) && value > 0
 }
