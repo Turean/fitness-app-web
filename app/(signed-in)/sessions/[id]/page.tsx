@@ -12,6 +12,8 @@ import { formatLongDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { SessionDetail } from "@/lib/types"
 
+import { EditSessionButton } from "./edit-session"
+
 export const metadata: Metadata = {
     title: "Session",
 }
@@ -49,13 +51,28 @@ async function Session({ params }: Pick<PageProps<"/sessions/[id]">, "params">) 
 
     return (
         <>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-                {session.sessionType}
-            </h1>
-            <p className="mt-1 text-muted-foreground">{formatLongDate(session.date)}</p>
+            <div className="mt-1 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h1 className="text-2xl font-semibold tracking-tight">
+                        {session.sessionType}
+                    </h1>
+                    <p className="mt-1 text-muted-foreground">{formatLongDate(session.date)}</p>
+                </div>
+                <EditSessionButton
+                    session={{
+                        id: session.id,
+                        sessionType: session.sessionType,
+                        note: session.note,
+                        exerciseCount: exercises.length,
+                        setCount,
+                    }}
+                />
+            </div>
 
             {session.note && (
-                <p className="mt-4 rounded-lg bg-muted px-4 py-3 text-sm">{session.note}</p>
+                <p className="mt-4 rounded-lg bg-muted px-4 py-3 text-sm whitespace-pre-line">
+                    {session.note}
+                </p>
             )}
 
             <p className="mt-6 mb-3 text-sm font-medium text-muted-foreground">
